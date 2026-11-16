@@ -1,0 +1,26 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import { ZodError } from 'zod';
+import { env } from './config/env.js';
+import { sequelize } from './config/database.js';
+import { authRoutes } from './routes/auth.js';
+import { requestRoutes } from './routes/requests.js';
+import { employeeRoutes, activityRoutes } from './routes/employees.js';
+export const app = express();
+app.disable('x-powered-by');
+app.use(helmet());
+app.use(cors({ origin: env.frontendUrl }));
+app.use(express.json({ limit: '64kb' }));
+app.get('/api/health', async (req, res) => { await sequelize.authenticate(); res.json({ status: 'ok' }); });
+app.use('/api/auth', authRoutes);
+app.use('/api/requests', requestRoutes);
+app.use('/api/employees', employeeRoutes);
+app.use('/api/activity', activityRoutes);
+app.use((req, res) => res.status(404).json({ message: 'Endpoint not found.' }));
+app.use((error, req, res, next) => {
+  if (error instanceof ZodError) return res.status(400).json({ message: error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') });
+  const status = error.status || 500;
+  if (status >= 500) console.error(error);
+  res.status(status).json({ message: status >= 500 ? 'Something went wrong. Please try again.' : error.message });
+});

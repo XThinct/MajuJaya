@@ -1,0 +1,11 @@
+import { Router } from 'express';
+import * as controller from '../controllers/requestController.js';
+import { authenticate } from '../middleware/auth.js';
+import { validate, requestSchema, decisionSchema } from '../utils/validation.js';
+export const requestRoutes = Router();
+requestRoutes.use(authenticate);
+requestRoutes.get('/', controller.list);
+requestRoutes.post('/', validate(requestSchema), controller.create);
+requestRoutes.get('/:id', controller.detail);
+requestRoutes.post('/:id/decision', validate(decisionSchema), controller.decide);
+requestRoutes.post('/:id/cancel', controller.cancel);
