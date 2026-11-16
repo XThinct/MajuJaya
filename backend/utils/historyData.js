@@ -43,13 +43,17 @@ export function prepareHistory(departments, employees, requests) {
     const signature = JSON.stringify([r.submitted_by, r.type, Object.keys(details).sort().map(key => [key, details[key]])]);
     if (seen.has(signature)) issues.push(`Possible duplicate of ${seen.get(signature)}. Review before approving.`);
     else seen.set(signature, r.id);
-    const approver_id = resolveApprover(employee, employees);
-    if (employee.manager_id !== approver_id) issues.push(`Reporting chain needs review; fallback approver: ${approver_id || 'none'}`);
-    if (r.approved_by && r.approved_by !== approver_id) issues.push(`Historical decision by ${r.approved_by} differs from the assigned approver.`);
+    const reportingApprover = resolveApprover(employee, employees);
+    const resolved = ['approved', 'rejected'].includes(r.status);
+    const recordedApprover = employeeIds.has(r.approved_by) ? r.approved_by : null;
+    const approver_id = resolved ? recordedApprover : reportingApprover;
+    if (employee.manager_id !== reportingApprover) issues.push(`Reporting chain needs review; fallback approver: ${reportingApprover || 'none'}`);
+    if (r.approved_by && r.approved_by !== reportingApprover) issues.push(`Historical decision by ${r.approved_by} differs from reporting-line approver ${reportingApprover || 'none'}. Original decision retained.`);
     if (r.approved_by && !employeeIds.has(r.approved_by)) issues.push(`Unknown historical decision maker: ${r.approved_by}`);
     return { id:r.id, type:r.type, submitted_by:r.submitted_by, submitted_at:normalizeHistoryDate(r.submitted_at,true),
       status:r.status, approver_id, decided_by:employeeIds.has(r.approved_by) ? r.approved_by : null,
-      decided_at:normalizeHistoryDate(r.approved_at,true), details, notes:r.notes ?? null, issues, source:structuredClone(r) };
+      decided_at:normalizeHistoryDate(r.approved_at,true), decision_note:r.status === 'rejected' ? r.notes ?? null : null,
+      details, notes:r.notes ?? null, issues, source:structuredClone(r) };
   });
   return { departments: departments.map(d => ({ id:d.id, name:d.name, location:d.location })), employees:employeeRows, requests:requestRows };
 }

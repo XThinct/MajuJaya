@@ -21,7 +21,7 @@ The import creates 7 departments, 26 employees, and 30 historical requests on an
 
 New imported accounts use **Welcome123!** as a temporary local password. Set `IMPORT_PASSWORD` in your environment before importing to choose a different password (minimum 10 characters; required in production). Existing accounts are never reset. Example active accounts: `joko.s@ptmajujaya.co.id` (employee), `agus.supriyadi@ptmajujaya.co.id` (manager), and `rina.wijaya@ptmajujaya.co.id` (HR). Inactive accounts cannot sign in.
 
-Legacy DD/MM/YYYY dates are normalized; timestamps without a timezone are interpreted in Asia/Jakarta. Missing departments/managers become null foreign keys with warnings; circular reporting chains use the department-manager/director fallback for request assignment. Invalid request details, inactive submitters, possible duplicates, and historical decisions by a different manager are flagged while historical statuses are preserved.
+Legacy DD/MM/YYYY dates are normalized; timestamps without a timezone are interpreted in Asia/Jakarta. Missing departments/managers become null foreign keys with warnings; circular reporting chains use the department-manager/director fallback for pending request assignment. Invalid request details, inactive submitters, possible duplicates, and historical decisions by a different manager are flagged while historical statuses are preserved.
 
 ## Environment configuration
 
@@ -82,3 +82,17 @@ See [docs/WORKFLOW.md](docs/WORKFLOW.md) for proposed versioned approval rules a
 ## AI assistance
 
 OpenAI Codex helped implement the application, validation, permission checks, and tests. The database configuration was simplified at the project owner's request to use separate DB_* environment variables and an externally managed PostgreSQL server. Embedded-database helpers were removed; a tracked data migration was added to import the assignment records into the configured database. Review business assumptions and application code before submission.
+
+
+## Historical request decisions
+
+`requests.json` records one decision for each completed request; it does not contain HR/Finance approval stages. Staff requests generally have a department-manager decision, and manager requests have a director decision. Additional approval stages remain future policy proposals.
+
+For approved/rejected historical requests, `approved_by` maps to both `approver_id` (the recorded approver) and `decided_by` (the decision actor); `approved_at` maps to `decided_at`, including for rejections because that is how the source JSON names the field. Rejection notes are also exposed as `decision_note`. Pending/cancelled records have no recorded decision, so their assigned reviewer is inferred from reporting relationships. These inferred assignments are not historical approvals.
+
+`req-018` retains its recorded decision by `emp-007` even though the reporting-line manager is `emp-002`; the discrepancy remains flagged. The two duplicate overtime entries, invalid leave dates, missing purchase details, inactive employee's pending request, and 14-hour overtime record retain their original statuses and details. Original date strings remain in `source`; operational date fields are normalized.
+
+After an earlier import, run `npm run db:migrate` to apply `003-history-decisions`. It corrects importer-derived approver/rejection-note fields and records each correction in `activities`, preserving previous values. Rows whose source or decision details changed since import are skipped. New application requests are outside this migration. The migration is tracked and will not apply twice.
+
+
+Importing reference JSON does not create an `imported` activity. Historical approval/rejection events retain their recorded actor, date, and notes. `004-remove-import-activities` removes legacy `imported` events from existing databases without changing request records or other activities; apply it with `npm run db:migrate`.

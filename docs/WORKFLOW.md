@@ -2,6 +2,8 @@
 
 The current system has one assigned approver per request and server-enforced transitions from pending to approved, rejected, or cancelled. The schema can retain source data, and new requests resolve their approver from the employee reporting hierarchy with documented fallbacks.
 
+The historical `requests.json` contains one recorded decision per completed request. It supports a manager/director assignment pattern, with anomalies preserved for review; it does not establish a sequential HR/accountant/director chain. The rules below describe a future extension rather than reconstructed historical approvals.
+
 ## Configurable rules
 
 Add versioned workflow definitions containing request type, condition predicates, and ordered approval steps. Conditions should use an allowlisted declarative format, never executable JavaScript or SQL supplied by an administrator.

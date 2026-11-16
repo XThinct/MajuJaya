@@ -26,8 +26,6 @@ export async function up(transaction) {
     const [,created] = await Request.findOrCreate({where:{id:row.id},defaults:row,transaction});
     result.requests[created ? 'created' : 'existing']++;
     if (!created) continue;
-    await Activity.create({request_id:row.id,actor_id:null,action:'imported',note:`Imported from HR JSON records with historical status: ${row.status}. Original source retained.`,created_at:new Date()},{transaction});
-    result.activities++;
     if (row.decided_by && row.decided_at) {
       await Activity.create({request_id:row.id,actor_id:row.decided_by,action:row.status,note:row.notes,created_at:row.decided_at},{transaction});
       result.activities++;

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { normalizeHistoryDate, prepareHistory } from '../utils/historyData.js';
+import { historyCorrection } from '../utils/historyCorrection.js';
 const load = name => JSON.parse(readFileSync(new URL(`../../${name}.json`,import.meta.url),'utf8'));
 const input = ['departments','employees','requests'].map(load);
 test('legacy dates normalize to ISO and unzoned timestamps use Jakarta time',()=>{
@@ -36,4 +37,37 @@ test('all historical rows and original records are retained while anomalies are 
 test('duplicate IDs and missing submitters fail before database writes',()=>{
   assert.throws(()=>prepareHistory([...input[0],input[0][0]],input[1],input[2]),/Duplicate IDs/);
   assert.throws(()=>prepareHistory(input[0],input[1], [{...input[2][0],submitted_by:'unknown'}]),/Unknown submitter/);
+});
+
+
+test('completed requests use the recorded decision maker, including cross-department history',()=>{
+  const data = prepareHistory(...input);
+  for (const source of input[2]) {
+    const row = data.requests.find(r=>r.id===source.id);
+    assert.equal(row.status,source.status);
+    assert.deepEqual(row.source,source);
+    if (['approved','rejected'].includes(source.status)) {
+      assert.equal(row.approver_id,source.approved_by);
+      assert.equal(row.decided_by,source.approved_by);
+      assert.equal(new Date(row.decided_at).getTime(),new Date(source.approved_at).getTime());
+    }
+  }
+  assert.equal(data.requests.find(r=>r.id==='req-018').approver_id,'emp-007');
+  assert.equal(data.requests.find(r=>r.id==='req-003').decision_note,input[2].find(r=>r.id==='req-003').notes);
+  assert.equal(data.requests.find(r=>r.id==='req-007').decision_note,input[2].find(r=>r.id==='req-007').notes);
+  assert.equal(data.requests.find(r=>r.id==='req-004').approver_id,'emp-016');
+  assert.equal(data.requests.find(r=>r.id==='req-027').approver_id,'emp-001');
+});
+
+test('historical correction preserves later app decisions and is a no-op once aligned',()=>{
+  const expected = prepareHistory(...input).requests.find(r=>r.id==='req-018');
+  assert.deepEqual(historyCorrection(expected,expected),{patch:{}});
+  const previous = {...expected,approver_id:'emp-002'};
+  assert.deepEqual(historyCorrection(previous,expected),{patch:{approver_id:'emp-007'}});
+  assert.ok(historyCorrection({...previous,status:'rejected'},expected).skip);
+  assert.ok(historyCorrection({...previous,decided_at:'2026-11-16T09:00:00Z'},expected).skip);
+  assert.ok(historyCorrection({...previous,decision_note:'A later decision'},expected).skip);
+  assert.ok(historyCorrection({...previous,details:{...previous.details,reason:'Changed in app'}},expected).skip);
+  assert.ok(historyCorrection({...previous,source:null},expected).skip);
+  assert.ok(historyCorrection(null,expected).skip);
 });
