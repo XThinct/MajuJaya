@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { detailsSchemas } from './validation.js';
-import { resolveApprover } from './policy.js';
+import { resolveApprover, resolveRequestApprover } from './policy.js';
 const validDate = z.iso.date();
 const validTimestamp = z.iso.datetime({ offset: true });
 export function normalizeHistoryDate(value, timestamp = false) {
@@ -18,15 +18,10 @@ export function prepareHistory(departments, employees, requests) {
   const departmentIds = new Set(departments.map(d => d.id));
   const employeeIds = new Set(employees.map(e => e.id));
   const employeeRows = employees.map(e => {
-    const issues = [];
-    const approver = resolveApprover(e, employees);
-    if (!departmentIds.has(e.department_id)) issues.push(`Unknown department: ${e.department_id}`);
-    if (e.manager_id && !employeeIds.has(e.manager_id)) issues.push(`Unknown manager: ${e.manager_id}`);
-    if (e.manager_id !== approver && e.role !== 'Plant Director') issues.push(`Reporting chain needs review; assigned fallback approver: ${approver || 'none'}`);
     return { id: e.id, name: e.name, email: e.email.toLowerCase(), role: e.role, status: e.status,
       department_id: departmentIds.has(e.department_id) ? e.department_id : null,
       manager_id: employeeIds.has(e.manager_id) ? e.manager_id : null,
-      join_date: normalizeHistoryDate(e.join_date), end_date: normalizeHistoryDate(e.end_date), issues, source: structuredClone(e) };
+      join_date: normalizeHistoryDate(e.join_date), end_date: normalizeHistoryDate(e.end_date), source: structuredClone(e) };
   });
   const seen = new Map();
   const requestRows = requests.map(r => {
@@ -44,14 +39,16 @@ export function prepareHistory(departments, employees, requests) {
     if (seen.has(signature)) issues.push(`Possible duplicate of ${seen.get(signature)}. Review before approving.`);
     else seen.set(signature, r.id);
     const reportingApprover = resolveApprover(employee, employees);
-    const resolved = ['approved', 'rejected'].includes(r.status);
     const recordedApprover = employeeIds.has(r.approved_by) ? r.approved_by : null;
-    const approver_id = resolved ? recordedApprover : reportingApprover;
+    // Preserve completed decisions; pending records can now be reviewed normally.
+    const approver_id = r.status === 'pending' ? resolveRequestApprover(employee, employees, r.type) : recordedApprover;
+    const approval_stage = r.status === 'pending' && r.type === 'purchase' && /\bManager$/i.test(employee.role || '') && employee.role !== 'Finance Manager' ? 'finance' : 'initial';
+    if (r.status === 'pending' && !approver_id) issues.push('No eligible department manager or director is configured for this request.');
     if (employee.manager_id !== reportingApprover) issues.push(`Reporting chain needs review; fallback approver: ${reportingApprover || 'none'}`);
     if (r.approved_by && r.approved_by !== reportingApprover) issues.push(`Historical decision by ${r.approved_by} differs from reporting-line approver ${reportingApprover || 'none'}. Original decision retained.`);
     if (r.approved_by && !employeeIds.has(r.approved_by)) issues.push(`Unknown historical decision maker: ${r.approved_by}`);
     return { id:r.id, type:r.type, submitted_by:r.submitted_by, submitted_at:normalizeHistoryDate(r.submitted_at,true),
-      status:r.status, approver_id, decided_by:employeeIds.has(r.approved_by) ? r.approved_by : null,
+      status:r.status, approver_id, approval_stage, decided_by:employeeIds.has(r.approved_by) ? r.approved_by : null,
       decided_at:normalizeHistoryDate(r.approved_at,true), decision_note:r.status === 'rejected' ? r.notes ?? null : null,
       details, notes:r.notes ?? null, issues, source:structuredClone(r) };
   });

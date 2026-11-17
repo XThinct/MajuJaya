@@ -7,7 +7,7 @@ export async function up(q, transaction) {
   await q.createTable('employees', {
     id: pk(), name: { type: D.STRING, allowNull: false }, email: { type: D.STRING, allowNull: false, unique: true }, role: D.STRING,
     department_id: { type: D.STRING, references: { model: 'departments', key: 'id' } }, manager_id: employeeRef(), status: D.STRING,
-    join_date: D.DATEONLY, end_date: D.DATEONLY, password_hash: { type: D.STRING, allowNull: false }, issues: { type: D.JSONB, defaultValue: [] }, source: D.JSONB,
+    join_date: D.DATEONLY, end_date: D.DATEONLY, password_hash: { type: D.STRING, allowNull: false }, source: D.JSONB,
   }, opts);
   await q.createTable('requests', {
     id: pk(), type: { type: D.STRING, allowNull: false }, submitted_by: { ...employeeRef(), allowNull: false }, approver_id: employeeRef(),

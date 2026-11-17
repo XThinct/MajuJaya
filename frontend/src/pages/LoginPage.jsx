@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { ArrowRight, CheckCheck, Check, ShieldCheck } from 'lucide-react';
+import { CheckCheck, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { errorMessage } from '../api/client';
 export default function LoginPage() {
@@ -8,6 +8,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   if (user) return <Navigate to="/" replace/>;
   async function submit(event) {
     event.preventDefault(); setBusy(true); setError('');
@@ -15,5 +16,32 @@ export default function LoginPage() {
     try { await signIn({ email: form.get('email'), password: form.get('password') }); navigate('/'); }
     catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   }
-  return <div className="login-page"><section className="login-story"><div className="brand"><span className="brand-symbol"><CheckCheck size={25}/></span><span>Maju Jaya<small>APPROVAL WORKSPACE</small></span></div><div className="login-story-copy"><span className="eyebrow">LESS BACK-AND-FORTH. MORE PROGRESS.</span><h1>Good work deserves<br/>a clear next step.</h1><p>From the factory floor to the head office, keep your team's requests moving.</p><div className="story-card"><span className="story-check"><Check size={24}/></span><div><strong>One place for every decision</strong><p>Submit. Review. Move forward.</p></div></div></div><span className="story-footer">PT Maju Jaya Manufaktur · Jakarta & Cikarang</span></section><section className="login-form-area"><form onSubmit={submit} className="login-form"><span className="eyebrow">YOUR WORKSPACE, CONNECTED</span><h2>Welcome back.</h2><p>Sign in to see what's next.</p>{error && <div className="error-banner" role="alert">{error}</div>}<label>Work email<input type="email" name="email" autoComplete="username" placeholder="you@ptmajujaya.co.id" required/></label><label>Password<input type="password" name="password" autoComplete="current-password" placeholder="Enter your password" required/></label><button className="button primary" disabled={busy}>{busy ? 'Signing in...' : 'Sign in to workspace'}<ArrowRight size={17}/></button><div className="login-help"><ShieldCheck size={17}/><span>For Maju Jaya employees. Contact HR for account access.</span></div></form></section></div>;
+  return <main className="signin-page">
+    <section className="signin-card" aria-labelledby="signin-title">
+      <header className="signin-heading">
+        <div className="signin-brand"><span className="signin-mark"><CheckCheck size={24} aria-hidden="true"/></span><span>Maju Jaya</span></div>
+        <h1 id="signin-title">Welcome back</h1>
+        <p>Please enter your details to sign in.</p>
+      </header>
+      <form className="signin-form" onSubmit={submit} aria-busy={busy}>
+        {error && <div className="error-banner" role="alert">{error}</div>}
+        <div className="signin-field">
+          <label htmlFor="signin-email">Work email</label>
+          <input id="signin-email" type="email" name="email" autoComplete="username" placeholder="you@ptmajujaya.co.id" required/>
+        </div>
+        <div className="signin-field">
+          <label htmlFor="signin-password">Password</label>
+          <div className="signin-password">
+            <input id="signin-password" type={showPassword ? 'text' : 'password'} name="password" autoComplete="current-password" placeholder="Enter your password" required/>
+            <button type="button" className="signin-password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} aria-controls="signin-password" onClick={() => setShowPassword(value => !value)}>
+              {showPassword ? <EyeOff size={20} aria-hidden="true"/> : <Eye size={20} aria-hidden="true"/>}
+            </button>
+          </div>
+        </div>
+        <button type="submit" className="button primary signin-submit" disabled={busy}>{busy ? 'Signing in...' : 'Sign in'}</button>
+        <p className="signin-help"><ShieldCheck size={17} aria-hidden="true"/><span>Need account access? Contact HR.</span></p>
+      </form>
+      <p className="signin-company">PT Maju Jaya Manufaktur</p>
+    </section>
+  </main>;
 }

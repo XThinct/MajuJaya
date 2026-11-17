@@ -21,24 +21,9 @@ The import creates 7 departments, 26 employees, and 30 historical requests on an
 
 New imported accounts use **Welcome123!** as a temporary local password. Set `IMPORT_PASSWORD` in your environment before importing to choose a different password (minimum 10 characters; required in production). Existing accounts are never reset. Example active accounts: `joko.s@ptmajujaya.co.id` (employee), `agus.supriyadi@ptmajujaya.co.id` (manager), and `rina.wijaya@ptmajujaya.co.id` (HR). Inactive accounts cannot sign in.
 
-Legacy DD/MM/YYYY dates are normalized; timestamps without a timezone are interpreted in Asia/Jakarta. Missing departments/managers become null foreign keys with warnings; circular reporting chains use the department-manager/director fallback for pending request assignment. Invalid request details, inactive submitters, possible duplicates, and historical decisions by a different manager are flagged while historical statuses are preserved.
-
 ## Environment configuration
 
-```env
-PORT=8000
-DB_HOST=localhost
-DB_USER=postgres
-DB_PASS=password_anda
-DB_NAME=prism_db
-DB_PORT=5432
-JWT_SECRET=NccBTYTo1hLdPXj6bpjXV1PRDBM7Vdam
-FRONTEND_URL=http://localhost:5173
-NODE_ENV=development
-DB_LOGGING=false
-```
-
-`.env` is ignored by Git. `backend/config/env.js` loads these values; `backend/config/database.js` passes the separate database settings to Sequelize. Set `DB_LOGGING=true` to log SQL statements.
+`.env` is ignored by Git. `backend/config/env.js` loads these values; `backend/config/database.js` passes the separate database settings to Sequelize. 
 
 ## Structure
 
@@ -58,41 +43,66 @@ Feature flow: React page ? API module ? Express route ? middleware ? controller 
 
 ## Functionality
 
-Employees can submit purchase, leave, and overtime requests and cancel pending requests. Only the assigned approver can approve or reject a request; rejection requires a reason. HR and the director can view company requests and the employee directory, but cannot override approval assignment. Decisions and activity events commit together, with row locks preventing competing decisions. The frontend provides filtering, request details, activity timelines, and responsive layouts.
+Employees can submit purchase, leave, and overtime requests and cancel pending requests. Only the assigned approver can approve or reject a request; rejection requires a reason. HR can view company-wide leave and overtime; Finance and the director can view all request history. HR managers and the director can access the employee directory. History visibility does not override approval assignment. Decisions and activity events commit together, with row locks preventing competing decisions. The frontend provides filtering, request details, activity timelines, and responsive layouts.
 
-The data migration populates `issues` and `source` for imported records. No JSON files are loaded by the running application. Reporting fallbacks, self-approval prevention, invalid-date checks, positive purchase costs, and an application overtime limit of 12 hours remain enforced. The 12-hour limit is an application assumption, not employment-law advice.
+## Leave and overtime approval flow
 
-## Verification
+For leave and overtime, an employee's request goes directly to an active manager of that employee's department. A manager's own request goes directly to the active Plant Director. The designated person's approval is final for that request; staff requests do not subsequently escalate to the director. A reporting link to a supervisor, colleague, director, or another department's manager does not bypass the department rule. If multiple eligible authorities exist, an eligible direct reporting link resolves the assignment; otherwise ambiguity or missing/inactive authorities blocks submission with a configuration error. Director self-approval is not supported.
 
-```sh
-npm test
-npm run build
-```
+Run `npm run db:migrate` to apply `005-leave-overtime-routing` to pending leave/overtime assignments. Completed historical requests retain their recorded approvers and decisions. The server also checks the current department/role rule at decision time to prevent approvals through a stale or incorrect stored assignment. Within-budget purchases now follow the same department/role rule; see the purchase flow below.
 
-Policy, validation, and import-normalization tests run without PostgreSQL. API integration tests are skipped unless `TEST_DB_NAME` is set. To run them, create an empty dedicated PostgreSQL database whose name ends in `_test`, different from `DB_NAME`, and set `TEST_DB_NAME` in the environment or `.env`. Optional `TEST_DB_HOST`, `TEST_DB_USER`, `TEST_DB_PASS`, and `TEST_DB_PORT` override the normal connection settings for that database. The suite creates test fixtures, tests permissions and request transitions, and removes its fixtures afterward. It never starts a database server or reads the reference JSON as database seed data.
 
-`npm run build` writes `frontend/dist/`. `npm start` starts the backend only; host the frontend separately for production and route `/api` to Express, or set `VITE_API_URL` at build time. The backend binds loopback for local development.
+## Within-budget purchase approval flow
 
-## Limitations and workflow design
+Purchase requests from employees first go to their department manager. Managers own purchases automatically go to Finance; see the Finance review flow below. Approval by that designated person completes the request. The application is an approvals tool: departmental budgets and whether a purchase is within budget are managed outside the system. It stores the requested estimated cost but does not add budget fields, budget calculations, budget screens, or automatic amount-based routing. Additional out-of-budget rules can be specified later.
 
-There is no registration/account provisioning interface, password reset, attachment handling, notification delivery, or configurable workflow editor. Authentication uses expiring JWTs in sessionStorage; deployment hardening and session revocation remain future work. Request lists are unpaginated for the small initial scope. npm audit currently reports two moderate findings in Sequelize's transitive UUID dependency. The app uses UUID v4 rather than the reported buffer-based v3/v5/v6 paths.
+`006-purchase-routing` applies this rule to pending purchases while preserving completed historical decisions, leave, and overtime. A pending purchase whose department has no active manager becomes unassigned with a warning; it is not sent directly to the director as a fallback. New submissions without an eligible approver are blocked. Existing historical anomalies remain preserved.
 
-See [docs/WORKFLOW.md](docs/WORKFLOW.md) for proposed versioned approval rules and manager delegation, and [docs/ASSIGNMENT.md](docs/ASSIGNMENT.md) for the original assignment. High-value purchases currently use a single approver.
+
+## Purchase Finance review and optional director escalation
+
+The department manager can approve a purchase as usual or choose **Approve & send to Finance**. Forwarding records the manager's approval, assigns the active Finance Manager, and keeps the request pending. Finance can approve as the final checkpoint, reject with a reason, or choose **Approve & send to Director** when director authorization is needed. Only the current approver can act; department managers retain access to their staff requests, while Finance and the director retain access through their history permissions.
+
+Managers own purchase requests automatically go to the Finance Manager; there is no submission choice. Employees must first obtain their department managers approval. The Finance Manager cannot assign their own purchase to themselves; their normal submission goes to the director. If the Finance Manager is already the employee's department manager, they can approve the purchase or forward it to the director without a duplicate self-review.
+
+These routes are manual approval decisions. No department budget figures, calculations, or automatic amount thresholds are added. The request's `approval_stage` tracks `initial`, `finance`, or `director`; final decision fields are set only when the request is finally approved/rejected. Each forwarding action and its note are recorded transactionally. Run `npm run db:migrate` to apply the `007-purchase-review-stage` schema extension; existing historical decisions and assignments are preserved.
+
+
+The automatic manager purchase flow supersedes the earlier manager-to-director purchase rule: Manager -> Finance Manager -> Director only if Finance chooses to escalate. `008-manager-purchases-finance` moves pending initial manager purchases into Finance review and preserves completed history. Leave and overtime retain Manager -> Director.
+
+
+## Request and activity history permissions
+
+History permissions are enforced consistently for lists, search/type/status filters, request details, approval inbox visibility, and activity events:
+
+| Viewer | Visible history |
+| --- | --- |
+| Employee | Their own purchases, leave and overtime |
+| Department manager | Their own requests and staff requests in their department |
+| Any HR department member | Own history plus company-wide leave and overtime; HR managers also see their own department staff purchases |
+| Any Finance department member | All purchases, leave and overtime across departments |
+| Plant Director | All history |
+
+Department exceptions use the employee's current department membership, loaded from PostgreSQL on every authenticated request. A manager's department staff scope excludes other managers and the director. Being named as a past actor, having an arbitrary stored assignment, or having the People-directory admin flag does not bypass these rules. Broad history visibility never grants approval authority: only the current eligible approver can decide.
+
+The Request history page defaults to visible history for managers, HR, Finance, and the director and provides a My requests switch. Ordinary employees only see My requests. Activity history follows the same visibility rules. No database migration or historical data rewrite is required for this permission change.
 
 ## AI assistance
 
-OpenAI Codex helped implement the application, validation, permission checks, and tests. The database configuration was simplified at the project owner's request to use separate DB_* environment variables and an externally managed PostgreSQL server. Embedded-database helpers were removed; a tracked data migration was added to import the assignment records into the configured database. Review business assumptions and application code before submission.
+### Tools used and for what
 
+I used OpenAI Codex to help build the React/Vite frontend and Express/Sequelize backend, import the reference JSON into PostgreSQL, implement authentication and approval permissions, and write tests. I also used it to refine the UI and investigate issues during development.
 
-## Historical request decisions
+### Where AI was most and least helpful
 
-`requests.json` records one decision for each completed request; it does not contain HR/Finance approval stages. Staff requests generally have a department-manager decision, and manager requests have a director decision. Additional approval stages remain future policy proposals.
+AI was most helpful in translating clearly defined requirements into matching frontend and backend files, implementing repetitive API and form code, and checking permissions and request transitions with tests. It was less helpful when requirements depended on company policy or visual preferences: the initial workflow assumptions and interface needed several rounds of review and correction.
 
-For approved/rejected historical requests, `approved_by` maps to both `approver_id` (the recorded approver) and `decided_by` (the decision actor); `approved_at` maps to `decided_at`, including for rejections because that is how the source JSON names the field. Rejection notes are also exposed as `decision_note`. Pending/cancelled records have no recorded decision, so their assigned reviewer is inferred from reporting relationships. These inferred assignments are not historical approvals.
+### Any AI-generated output you had to significantly correct or rethink
 
-`req-018` retains its recorded decision by `emp-007` even though the reporting-line manager is `emp-002`; the discrepancy remains flagged. The two duplicate overtime entries, invalid leave dates, missing purchase details, inactive employee's pending request, and 14-hour overtime record retain their original statuses and details. Original date strings remain in `source`; operational date fields are normalized.
+- **Environment configuration:** I changed the initial database setup to use a separately managed PostgreSQL server configured through the root `.env`. I specified individual `DB_HOST`, `DB_USER`, `DB_PASS`, `DB_NAME`, and `DB_PORT` variables, with `.env.example` as the editable template, and removed embedded-database helpers.
 
-After an earlier import, run `npm run db:migrate` to apply `003-history-decisions`. It corrects importer-derived approver/rejection-note fields and records each correction in `activities`, preserving previous values. Rows whose source or decision details changed since import are skipped. New application requests are outside this migration. The migration is tracked and will not apply twice.
+- **Request approval flow:** I clarified that employees need their own department manager's approval, while managers' leave and overtime requests go to the director. Managers' purchases go to Finance, and employee purchases can be forwarded by their manager to Finance, with optional director escalation. I also corrected the treatment of imported records: completed historical decisions stay as recorded, while pending requests remain reviewable.
 
+- **UI design and color selection:** I revised the initial interface, removed unnecessary navigation and duplicate dashboard elements, and selected `#F9F7F7`, `#DBE2EF`, and `#3F72AF` as the main palette. The login page was redesigned around a centered card, and request actions were given confirmation dialogs.
 
-Importing reference JSON does not create an `imported` activity. Historical approval/rejection events retain their recorded actor, date, and notes. `004-remove-import-activities` removes legacy `imported` events from existing databases without changing request records or other activities; apply it with `npm run db:migrate`.
+- **History navigation:** I moved Visible history from the request-history page into Activity history, replacing the separate event-list view. My requests now focuses on personal submissions, while Activity history shows approved, rejected, and cancelled requests according to department and role permissions. Pending requests requiring a decision appear in the Approval inbox.

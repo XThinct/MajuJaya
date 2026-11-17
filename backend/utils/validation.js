@@ -11,5 +11,5 @@ export const requestSchema = z.object({ type: z.enum(['purchase', 'leave', 'over
   if (!result.success) for (const issue of result.error.issues) ctx.addIssue({ code: 'custom', path: ['details', ...issue.path], message: issue.message });
 });
 export const loginSchema = z.object({ email: z.email().max(254), password: z.string().min(1).max(128) });
-export const decisionSchema = z.object({ decision: z.enum(['approved', 'rejected']), note: z.string().trim().max(4000).default('') }).strict().refine(v => v.decision !== 'rejected' || v.note.length > 0, { message: 'Give a reason for rejecting this request.', path: ['note'] });
+export const decisionSchema = z.object({ decision: z.enum(['approved', 'rejected', 'forward_to_finance', 'forward_to_director']), note: z.string().trim().max(4000).default('') }).strict().refine(v => v.decision !== 'rejected' || v.note.length > 0, { message: 'Give a reason for rejecting this request.', path: ['note'] });
 export const validate = schema => (req, res, next) => { req.body = schema.parse(req.body); next(); };

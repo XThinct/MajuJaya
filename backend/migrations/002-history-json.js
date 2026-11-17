@@ -31,5 +31,5 @@ export async function up(transaction) {
       result.activities++;
     }
   }
-  return {...result, flaggedEmployees:data.employees.filter(e=>e.issues.length).map(e=>e.id), flaggedRequests:data.requests.filter(r=>r.issues.length).map(r=>r.id)};
+  return {...result, flaggedRequests:data.requests.filter(r=>r.issues.length).map(r=>r.id)};
 }

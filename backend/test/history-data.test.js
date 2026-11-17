@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { normalizeHistoryDate, prepareHistory } from '../utils/historyData.js';
-import { historyCorrection } from '../utils/historyCorrection.js';
 const load = name => JSON.parse(readFileSync(new URL(`../../${name}.json`,import.meta.url),'utf8'));
 const input = ['departments','employees','requests'].map(load);
 test('legacy dates normalize to ISO and unzoned timestamps use Jakarta time',()=>{
@@ -22,7 +21,8 @@ test('all historical rows and original records are retained while anomalies are 
   assert.equal(employee('emp-015').manager_id,null);
   assert.equal(employee('emp-015').source.manager_id,'emp-099');
   assert.equal(request('req-022').approver_id,'emp-009');
-  assert.ok(employee('emp-010').issues.length);
+  assert.ok(data.employees.every(e => !Object.hasOwn(e,'issues')));
+  assert.equal(employee('emp-010').source.manager_id,'emp-011');
   assert.ok(request('req-008').issues.some(s=>s.includes('end_date')));
   assert.ok(request('req-016').issues.some(s=>s.includes('req-015')));
   assert.ok(request('req-023').issues.some(s=>s.includes('item_description')));
@@ -56,18 +56,21 @@ test('completed requests use the recorded decision maker, including cross-depart
   assert.equal(data.requests.find(r=>r.id==='req-003').decision_note,input[2].find(r=>r.id==='req-003').notes);
   assert.equal(data.requests.find(r=>r.id==='req-007').decision_note,input[2].find(r=>r.id==='req-007').notes);
   assert.equal(data.requests.find(r=>r.id==='req-004').approver_id,'emp-016');
-  assert.equal(data.requests.find(r=>r.id==='req-027').approver_id,'emp-001');
+  assert.equal(data.requests.find(r=>r.id==='req-027').approver_id,'emp-002');
+  assert.equal(data.requests.find(r=>r.id==='req-027').approval_stage,'finance');
 });
 
-test('historical correction preserves later app decisions and is a no-op once aligned',()=>{
-  const expected = prepareHistory(...input).requests.find(r=>r.id==='req-018');
-  assert.deepEqual(historyCorrection(expected,expected),{patch:{}});
-  const previous = {...expected,approver_id:'emp-002'};
-  assert.deepEqual(historyCorrection(previous,expected),{patch:{approver_id:'emp-007'}});
-  assert.ok(historyCorrection({...previous,status:'rejected'},expected).skip);
-  assert.ok(historyCorrection({...previous,decided_at:'2026-11-16T09:00:00Z'},expected).skip);
-  assert.ok(historyCorrection({...previous,decision_note:'A later decision'},expected).skip);
-  assert.ok(historyCorrection({...previous,details:{...previous.details,reason:'Changed in app'}},expected).skip);
-  assert.ok(historyCorrection({...previous,source:null},expected).skip);
-  assert.ok(historyCorrection(null,expected).skip);
+test('pending imports are assigned for review while completed history is preserved', () => {
+  const data = prepareHistory(...input);
+  for (const original of input[2]) {
+    const row = data.requests.find(r => r.id === original.id);
+    if (original.status !== 'pending') {
+      assert.equal(row.approver_id, original.approved_by ?? null);
+      assert.equal(row.approval_stage, 'initial');
+    }
+    assert.equal(row.status, original.status);
+    assert.equal(row.notes, original.notes ?? null);
+    assert.deepEqual(row.source, original);
+  }
+  for (const id of ['req-015', 'req-016']) assert.equal(data.requests.find(r => r.id === id).approver_id, 'emp-016');
 });
