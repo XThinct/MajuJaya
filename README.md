@@ -95,7 +95,7 @@ I used OpenAI Codex to help build the React/Vite frontend and Express/Sequelize 
 
 ### Where AI was most and least helpful
 
-AI was most helpful in translating clearly defined requirements into matching frontend and backend files, implementing repetitive API and form code, and checking permissions and request transitions with tests. It was less helpful when requirements depended on company policy or visual preferences: the initial workflow assumptions and interface needed several rounds of review and correction.
+AI was most helpful in translating clearly defined requirements into matching frontend and backend files, implementing repetitive API and form code, and checking permissions and request transitions with tests. It was less helpful when requirements depended on visual preferences, the initial workflow assumptions and interface needed several rounds of review and correction.
 
 ### Any AI-generated output you had to significantly correct or rethink
 
