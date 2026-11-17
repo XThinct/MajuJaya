@@ -19,7 +19,7 @@ The application uses your separately managed PostgreSQL server. `npm run db:impo
 
 The import creates 7 departments, 26 employees, and 30 historical requests on an empty database. Existing IDs, account passwords, and request decisions are preserved. All imported rows and activity entries commit together; a successful import is recorded in `schema_migrations`, so rerunning the command skips it. Original employee/request records are retained in JSONB `source` fields.
 
-New imported accounts use **Welcome123!** as a temporary local password. Set `IMPORT_PASSWORD` in your environment before importing to choose a different password (minimum 10 characters; required in production). Existing accounts are never reset. Example active accounts: `joko.s@ptmajujaya.co.id` (employee), `agus.supriyadi@ptmajujaya.co.id` (manager), and `rina.wijaya@ptmajujaya.co.id` (HR). Inactive accounts cannot sign in.
+New imported accounts use **Welcome123!** as a temporary local password. Set `IMPORT_PASSWORD` in your environment before importing to choose a different password (minimum 10 characters; required in production).
 
 ## Environment configuration
 
